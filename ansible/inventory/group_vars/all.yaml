@@ -1,0 +1,22 @@
+---
+system_limits:
+  - { domain: "*", type: soft, item: nofile, value: 65536 }
+  - { domain: "*", type: hard, item: nofile, value: 65536 }
+
+sysctl_settings:
+  net.core.somaxconn: 65535
+  net.ipv4.tcp_max_syn_backlog: 65535
+  net.ipv4.tcp_tw_reuse: 1
+  net.ipv4.ip_local_port_range: "1024 65535"
+
+common_packages:
+  - wget
+  - git
+  - htop
+  - vim
+  - unzip
+  - jq
+  - python3-pip
+  - nmap
+  - tcpdump
+  - net-tools

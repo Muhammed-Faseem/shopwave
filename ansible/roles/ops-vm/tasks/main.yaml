@@ -1,0 +1,52 @@
+---
+- name: Check AWS CLI
+  ansible.builtin.command: aws --version
+  register: aws_cli_check
+  changed_when: false
+  failed_when: false
+
+- name: Install kubectl
+  ansible.builtin.shell: |
+    KUBECTL_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt)
+    curl -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    rm kubectl
+  args:
+    creates: /usr/local/bin/kubectl
+
+- name: Create AWS and Kubernetes configuration directories
+  ansible.builtin.file:
+    path: "/home/ec2-user/{{ item }}"
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: '0700'
+  loop:
+    - .aws
+    - .kube
+
+- name: Configure AWS CLI
+  ansible.builtin.template:
+    src: aws_config.j2
+    dest: /home/ec2-user/.aws/config
+    owner: ec2-user
+    group: ec2-user
+    mode: '0600'
+
+- name: Configure EKS kubeconfig
+  ansible.builtin.command: >
+    aws eks update-kubeconfig
+    --name shopwave-production
+    --region ap-south-1
+    --kubeconfig /home/ec2-user/.kube/config
+  become_user: ec2-user
+
+- name: Add ShopWave aliases
+  ansible.builtin.blockinfile:
+    path: /home/ec2-user/.bashrc
+    block: |
+      alias k='kubectl'
+      alias kgp='kubectl get pods -n shopwave'
+      alias klogs='kubectl logs -n shopwave'
+      alias cluster-status='kubectl get nodes && kubectl get pods -n shopwave'
+    marker: "# {mark} ANSIBLE MANAGED SHOPWAVE ALIASES"

@@ -1,0 +1,20 @@
+---
+- name: Configure common baseline
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Configure bastion
+  hosts: bastion
+  become: true
+  roles:
+    - bastion
+
+# Enable this play after creating the ops VM.
+#
+# - name: Configure ops VM
+#   hosts: ops_vm
+#   become: true
+#   roles:
+#     - ops-vm

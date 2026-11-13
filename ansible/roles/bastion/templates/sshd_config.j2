@@ -1,0 +1,32 @@
+# Managed by Ansible
+
+Port 22
+Protocol 2
+
+PermitRootLogin {{ ssh_config.permit_root_login }}
+PasswordAuthentication {{ ssh_config.password_authentication }}
+PubkeyAuthentication yes
+
+AuthorizedKeysFile .ssh/authorized_keys
+
+MaxAuthTries {{ ssh_config.max_auth_tries }}
+LoginGraceTime {{ ssh_config.login_grace_time }}
+
+X11Forwarding {{ ssh_config.x11_forwarding }}
+AllowAgentForwarding {{ ssh_config.allow_agent_forwarding }}
+AllowTcpForwarding yes
+
+PermitTunnel no
+UsePAM yes
+
+ClientAliveInterval {{ ssh_config.client_alive_interval }}
+ClientAliveCountMax {{ ssh_config.client_alive_count_max }}
+
+SyslogFacility AUTHPRIV
+LogLevel VERBOSE
+
+AllowUsers {{ allowed_ssh_users | join(' ') }}
+
+Banner /etc/issue.net
+
+Subsystem sftp /usr/libexec/openssh/sftp-server

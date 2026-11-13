@@ -1,0 +1,4 @@
+ansible_host: "{{ private_ip_address }}"
+ansible_ssh_common_args: >-
+  -o ProxyJump=ec2-user@{{ groups['bastion'][0] }}
+  -o StrictHostKeyChecking=accept-new

@@ -1,0 +1,7 @@
+---
+- name: Configure bastion server
+  hosts: bastion
+  become: true
+  roles:
+    - common
+    - bastion

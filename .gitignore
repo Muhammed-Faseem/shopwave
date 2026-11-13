@@ -13,7 +13,6 @@ npm-debug.log*
 *.tfstate.backup
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
 crash.log
 
 # Ansible
@@ -32,3 +31,6 @@ Thumbs.db
 
 # Docker
 *.log
+
+# Test coverage output
+**/coverage/

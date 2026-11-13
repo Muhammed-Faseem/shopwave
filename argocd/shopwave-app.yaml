@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopwave
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Muhammed-Faseem/shopwave.git
+    targetRevision: main
+    path: k8s/base
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shopwave
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - RespectIgnoreDifferences=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

@@ -1,0 +1,40 @@
+---
+- name: Update package cache
+  ansible.builtin.dnf:
+    update_cache: true
+
+- name: Install common packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Set timezone
+  community.general.timezone:
+    name: Asia/Kolkata
+
+- name: Configure system limits
+  community.general.pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop: "{{ system_limits }}"
+
+- name: Apply sysctl network settings
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+  loop: "{{ sysctl_settings | dict2items }}"
+
+- name: Install automatic updates
+  ansible.builtin.package:
+    name: dnf-automatic
+    state: present
+
+- name: Enable automatic updates
+  ansible.builtin.systemd:
+    name: dnf-automatic-install.timer
+    enabled: true
+    state: started

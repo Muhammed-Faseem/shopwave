@@ -1,0 +1,21 @@
+plugin: amazon.aws.aws_ec2
+regions:
+  - ap-south-1
+
+filters:
+  instance-state-name: running
+  tag:Project: shopwave
+  tag:Environment: production
+
+keyed_groups:
+  - key: tags.Role
+    prefix: ""
+    separator: ""
+
+hostnames:
+  - public-ip-address
+  - private-ip-address
+
+compose:
+  ansible_host: public_ip_address
+  ansible_user: ec2-user
