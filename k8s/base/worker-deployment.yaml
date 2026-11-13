@@ -33,7 +33,7 @@ spec:
                       - spot
       containers:
         - name: worker
-          image: 967283278916.dkr.ecr.ap-south-1.amazonaws.com/shopwave/worker:latest
+          image: 967283278916.dkr.ecr.ap-south-1.amazonaws.com/shopwave/worker:c92945d1943d1ea8f2a144dcd6ec28d85cc1e303
           resources:
             requests:
               memory: "128Mi"
