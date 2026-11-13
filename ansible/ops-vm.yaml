@@ -1,0 +1,7 @@
+---
+- name: Configure operations server
+  hosts: ops_vm
+  become: true
+  roles:
+    - common
+    - ops-vm

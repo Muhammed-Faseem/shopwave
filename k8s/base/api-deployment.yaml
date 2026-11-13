@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shopwave
+  labels:
+    app: api
+    version: "1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: api
+        version: "1.0"
+    spec:
+      serviceAccountName: api
+      nodeSelector:
+        role: general
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: api
+      containers:
+        - name: api
+          image: 967283278916.dkr.ecr.ap-south-1.amazonaws.com/shopwave/api:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          envFrom:
+            - configMapRef:
+                name: shopwave-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shopwave-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shopwave-secrets
+                  key: REDIS_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: shopwave-secrets
+                  key: JWT_SECRET
+            - name: SQS_ORDER_QUEUE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shopwave-secrets
+                  key: SQS_ORDER_QUEUE_URL
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          startupProbe:
+            httpGet:
+              path: /live
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+      terminationGracePeriodSeconds: 60
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: shopwave
+  labels:
+    app: api
+spec:
+  type: ClusterIP
+  selector:
+    app: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: shopwave
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300

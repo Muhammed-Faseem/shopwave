@@ -1,0 +1,36 @@
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+
+      smtp_smarthost: "smtp.gmail.com:587"
+      smtp_from: "mohdfaseem7@gmail.com"
+      smtp_auth_username: "mohdfaseem7@gmail.com"
+      smtp_auth_password_file: "/etc/alertmanager/secrets/gmail-smtp/app-password"
+      smtp_require_tls: true
+
+    route:
+      receiver: "null"
+      group_by:
+        - alertname
+        - namespace
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        - receiver: "gmail-shopwave"
+          matchers:
+            - 'alertname =~ "ShopWave.*"'
+
+    receivers:
+      - name: "null"
+
+      - name: "gmail-shopwave"
+        email_configs:
+          - to: "mohdfaseem7@gmail.com"
+            send_resolved: true
+
+  alertmanagerSpec:
+    secrets:
+      - gmail-smtp

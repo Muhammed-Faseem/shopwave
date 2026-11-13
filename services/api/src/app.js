@@ -5,6 +5,10 @@ const rateLimit = require('express-rate-limit');
 const logger = require('./logger');
 
 const app = express();
+const {
+  metricsMiddleware,
+  metricsHandler
+} = require('./metrics');
 
 app.use(helmet());
 
@@ -39,12 +43,12 @@ app.use((req, res, next) => {
   });
   next();
 });
-
+app.use(metricsMiddleware);
 app.use('/', require('./routes/health'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
-
+app.get('/metrics', metricsHandler);
 app.use((req, res) => {
   res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
@@ -58,5 +62,7 @@ app.use((err, req, res, next) => {
   });
   res.status(500).json({ error: 'Internal server error' });
 });
+
+
 
 module.exports = app;

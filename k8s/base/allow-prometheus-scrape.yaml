@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: shopwave
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+              prometheus: monitoring-kube-prometheus-prometheus
+      ports:
+        - protocol: TCP
+          port: 3000

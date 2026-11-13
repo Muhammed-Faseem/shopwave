@@ -1,9 +1,9 @@
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001 -G nodejs
 COPY --from=deps --chown=nodeuser:nodejs /app/node_modules ./node_modules

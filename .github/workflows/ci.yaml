@@ -1,0 +1,223 @@
+
+name: ShopWave CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'k8s/**'
+      - 'docs/**'
+      - '*.md'
+
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.service }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, worker]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/${{ matrix.service }}
+        run: npm ci
+
+      - name: Check JavaScript syntax
+        working-directory: services/${{ matrix.service }}
+        run: |
+          find src -type f -name '*.js' -print0 |
+            xargs -0 -r -n1 node --check
+
+      - name: Run API tests
+        if: matrix.service == 'api'
+        working-directory: services/api
+        run: npm test -- --runInBand
+        env:
+          NODE_ENV: test
+
+      - name: Worker test notice
+        if: matrix.service == 'worker'
+        run: echo "::warning::Worker automated tests have not been implemented yet."
+
+  build-and-scan:
+    name: Build and scan (${{ matrix.service }})
+    needs: validate
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, worker]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          IMAGE="shopwave/${SERVICE}:${GITHUB_SHA}"
+          docker build --pull --tag "$IMAGE" "./services/${SERVICE}"
+          docker save --output "${SERVICE}.tar" "$IMAGE"
+
+      - name: Scan image with Trivy
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          mkdir -p "$HOME/.cache/trivy"
+
+          docker run --rm \
+            -v "$PWD:/work" \
+            -v "$HOME/.cache/trivy:/root/.cache/" \
+            aquasec/trivy:0.76.2 \
+            image --input "/work/${SERVICE}.tar" \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1
+
+      - name: Upload scanned image
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopwave-${{ matrix.service }}-${{ github.sha }}
+          path: ${{ matrix.service }}.tar
+          retention-days: 1
+
+  publish:
+    name: Publish (${{ matrix.service }})
+    needs: build-and-scan
+
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, worker]
+
+    steps:
+      - name: Download scanned image
+        uses: actions/download-artifact@v4
+        with:
+          name: shopwave-${{ matrix.service }}-${{ github.sha }}
+          path: ./image
+
+      - name: Load scanned image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: docker load --input "./image/${SERVICE}.tar"
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push images
+        env:
+          SERVICE: ${{ matrix.service }}
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+        run: |
+          LOCAL_IMAGE="shopwave/${SERVICE}:${GITHUB_SHA}"
+          SHA_IMAGE="${ECR_REGISTRY}/shopwave/${SERVICE}:${GITHUB_SHA}"
+          LATEST_IMAGE="${ECR_REGISTRY}/shopwave/${SERVICE}:latest"
+
+          docker tag "$LOCAL_IMAGE" "$SHA_IMAGE"
+          docker tag "$LOCAL_IMAGE" "$LATEST_IMAGE"
+
+          docker push "$SHA_IMAGE"
+          docker push "$LATEST_IMAGE"
+
+  update-manifests:
+    name: Open Kubernetes manifest PR
+    needs: publish
+
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MANIFEST_PR_TOKEN }}
+
+      - name: Update image tags
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ap-south-1
+        run: |
+          for service in api worker; do
+            MANIFEST="k8s/base/${service}-deployment.yaml"
+
+            if [ ! -f "$MANIFEST" ]; then
+              echo "Missing manifest: $MANIFEST"
+              exit 1
+            fi
+
+            sed -i -E \
+              "s#(^[[:space:]]*image:[[:space:]]*${ACCOUNT_ID}\.dkr\.ecr\.${AWS_REGION}\.amazonaws\.com/shopwave/${service}:).*#\1${IMAGE_TAG}#" \
+              "$MANIFEST"
+
+            if ! grep -qF "$IMAGE_TAG" "$MANIFEST"; then
+              echo "Failed to update $MANIFEST"
+              exit 1
+            fi
+
+            echo "Updated $service to $IMAGE_TAG"
+          done
+
+      - name: Open manifest pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.MANIFEST_PR_TOKEN }}
+          base: main
+          branch: ci/update-image-tags
+          delete-branch: true
+          add-paths: |
+            k8s/base/api-deployment.yaml
+            k8s/base/worker-deployment.yaml
+          commit-message: "ci: update image tags to ${{ github.sha }}"
+          title: "ci: deploy ${{ github.sha }}"
+          body: |
+            Automated ShopWave image tag update.
+
+            API and worker images have passed the build and Trivy scan.
+            Review and merge this PR to deploy the new images through GitOps.

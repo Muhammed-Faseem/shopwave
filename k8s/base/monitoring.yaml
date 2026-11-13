@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: shopwave-api
+  namespace: shopwave
+  labels:
+    release: monitoring
+    app: shopwave-api
+spec:
+  namespaceSelector:
+    matchNames:
+      - shopwave
+
+  selector:
+    matchLabels:
+      app: api
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

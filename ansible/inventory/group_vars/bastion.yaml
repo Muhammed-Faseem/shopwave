@@ -1,0 +1,18 @@
+---
+ssh_config:
+  permit_root_login: "no"
+  password_authentication: "no"
+  max_auth_tries: 3
+  login_grace_time: 30
+  x11_forwarding: "no"
+  allow_agent_forwarding: "no"
+  client_alive_interval: 300
+  client_alive_count_max: 2
+
+fail2ban_config:
+  maxretry: 5
+  findtime: 600
+  bantime: 3600
+
+allowed_ssh_users:
+  - ec2-user
