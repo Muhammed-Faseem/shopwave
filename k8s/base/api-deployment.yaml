@@ -34,7 +34,7 @@ spec:
               app: api
       containers:
         - name: api
-          image: 967283278916.dkr.ecr.ap-south-1.amazonaws.com/shopwave/api:latest
+          image: 967283278916.dkr.ecr.ap-south-1.amazonaws.com/shopwave/api:c92945d1943d1ea8f2a144dcd6ec28d85cc1e303
           ports:
             - name: http
               containerPort: 3000
