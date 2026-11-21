@@ -23,8 +23,11 @@ spec:
         version: "1.0"
     spec:
       serviceAccountName: api
-      nodeSelector:
-        role: general
+      tolerations:
+        - key: "spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
