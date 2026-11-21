@@ -3,8 +3,6 @@ kind: Application
 metadata:
   name: shopwave
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false
 spec:
   project: default
 

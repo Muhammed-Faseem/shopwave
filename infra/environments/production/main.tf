@@ -60,6 +60,8 @@ module "eks" {
   subnet_ids = module.vpc.private_subnet_ids
 
   cluster_endpoint_public_access           = true
+  cluster_endpoint_private_access          = true
+  cluster_endpoint_public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
   enable_irsa                              = true
   enable_cluster_creator_admin_permissions = true
 
@@ -74,7 +76,7 @@ module "eks" {
     }
 
     spot = {
-      instance_types = ["t3.small", "t3.small"]
+      instance_types = ["t3.small"]
       capacity_type  = "SPOT"
       min_size       = 0
       max_size       = 5
@@ -279,18 +281,10 @@ resource "aws_security_group" "rds" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = local.name
-  engine         = "postgres"
-  engine_version = "15"
-  instance_class = "db.t3.micro"
+  identifier = local.name
 
-  allocated_storage     = 20
-  max_allocated_storage = 100
-  storage_encrypted     = true
-
-  db_name  = "shopwave"
-  username = "shopwave"
-  password = var.db_password
+  snapshot_identifier = "shopwave-final-backup-20261113"
+  instance_class      = "db.t3.micro"
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
@@ -298,9 +292,13 @@ resource "aws_db_instance" "main" {
   backup_retention_period = 1
   backup_window           = "03:00-04:00"
 
-  skip_final_snapshot = true
-  multi_az            = false
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "shopwave-production-final-20261121"
+  multi_az                  = false
 }
+
+
+
 
 resource "aws_elasticache_subnet_group" "main" {
   name       = local.name
@@ -438,9 +436,9 @@ resource "aws_iam_role_policy" "github_actions" {
           "ecr:PutImage"
         ]
         Resource = [
-  aws_ecr_repository.services["api"].arn,
-  aws_ecr_repository.services["worker"].arn
-]
+          aws_ecr_repository.services["api"].arn,
+          aws_ecr_repository.services["worker"].arn
+        ]
       }
     ]
   })
@@ -497,50 +495,4 @@ resource "helm_release" "external_secrets" {
   }
 
   depends_on = [module.eks]
-}
-
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-resource "aws_security_group" "bastion" {
-  name   = "${local.name}-bastion"
-  vpc_id = module.vpc.vpc_id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_instance" "bastion" {
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = "t3.micro"
-  subnet_id     = module.vpc.public_subnet_ids[0]
-
-  vpc_security_group_ids      = [aws_security_group.bastion.id]
-  key_name                    = var.bastion_key_name
-  associate_public_ip_address = true
-
-  tags = { Name = "${local.name}-bastion", Role = "bastion" }
 }

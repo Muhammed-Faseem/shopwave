@@ -34,3 +34,6 @@ Thumbs.db
 
 # Test coverage output
 **/coverage/
+
+# Terraform execution plans may contain sensitive values
+*.tfplan

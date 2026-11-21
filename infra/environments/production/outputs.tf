@@ -39,7 +39,3 @@ output "api_role_arn" {
 output "worker_role_arn" {
   value = module.worker_irsa.iam_role_arn
 }
-
-output "bastion_public_ip" {
-  value = aws_instance.bastion.public_ip
-}
