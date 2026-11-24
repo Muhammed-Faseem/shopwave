@@ -34,6 +34,7 @@ router.get('/health', async (req, res) => {
 
   res.status(statusCode).json({
     status: allHealthy ? 'healthy' : 'degraded',
+    service: 'shopwave-api',
     checks,
     timestamp: new Date().toISOString(),
     version: process.env.APP_VERSION || 'unknown'
