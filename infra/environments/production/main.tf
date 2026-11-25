@@ -96,7 +96,10 @@ module "eks" {
   cluster_addons = {
     coredns    = { most_recent = true }
     kube-proxy = { most_recent = true }
-    vpc-cni    = { most_recent = true }
+    vpc-cni = { most_recent = true
+      configuration_values = jsonencode({
+        enableNetworkPolicy = "true"
+    }) }
     aws-ebs-csi-driver = {
       most_recent              = true
       service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
