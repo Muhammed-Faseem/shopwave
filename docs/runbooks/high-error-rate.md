@@ -5,6 +5,8 @@
 `ShopWaveHighErrorRate` fires when the ShopWave API HTTP 5xx error rate
 exceeds 5% for two minutes.
 
+> **Monitoring status:** Prometheus, Grafana, and Alertmanager are not currently deployed in the ShopWave cluster. The metrics and alerting steps below are reference procedures for a future deployment.
+
 ## 1. Check API pod health
 
 ```bash
@@ -45,7 +47,7 @@ kubectl get secret shopwave-secrets -n shopwave
 Verify that the ExternalSecret is synchronized. Do not print or share
 the contents of Kubernetes Secrets.
 
-## 5. Check Prometheus metrics
+## 5. Check Prometheus metrics (when monitoring is deployed)
 
 Inspect the API 5xx rate:
 
@@ -80,5 +82,5 @@ the rollback and update the Kubernetes manifest afterwards.
 - Deployment available replicas match the expected count.
 - API endpoints are present.
 - HTTP 5xx rate has returned below the alert threshold.
-- The alert has resolved in Alertmanager.
+- If monitoring is deployed, confirm the alert has resolved in Alertmanager.
 - The cause and corrective action are documented.

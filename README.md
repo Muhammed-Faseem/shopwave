@@ -42,7 +42,7 @@ The API handles customer authentication, product browsing, and order creation. A
 - **Infrastructure as code:** Terraform provisions AWS resources; Ansible configures supporting EC2 hosts.
 - **Kubernetes deployment:** Deployments, Services, health probes, autoscaling, and network policies define the runtime environment.
 - **GitOps delivery:** GitHub Actions builds and scans images; Argo CD watches Kubernetes manifests and deploys changes.
-- **Observability:** Prometheus, Grafana, and Alertmanager provide metrics, dashboards, and alert routing.
+- **Observability:** Prometheus, Grafana, and Alertmanager are planned but are not currently deployed.
 
 ## Architecture
 
@@ -61,9 +61,6 @@ flowchart TD
     WORKER -->|Update order status| DB
     WORKER -->|Invalidate user order cache| REDIS
 
-    API -.->|Metrics| PROM[Prometheus]
-    PROM --> GRAF[Grafana]
-    PROM --> ALERT[Alertmanager]
 ```
 
 The application runs in Amazon EKS. The API and worker communicate with managed AWS services over the VPC network. The database and Redis are placed in private subnets; external traffic enters through the load balancer and Kubernetes ingress.
@@ -77,16 +74,16 @@ The application runs in Amazon EKS. The API and worker communicate with managed 
 5. The API publishes an order message to the SQS FIFO queue, using the user ID as the message group so that a user's orders are processed in order.
 6. The worker long-polls SQS, reads the order message, and attempts to send a confirmation email through SES.
 7. The worker updates the order status to `confirmed`, invalidates the user's order-cache key, and deletes the queue message after successful message processing.
-8. Messages that repeatedly fail are retried by SQS and, after the configured receive limit, moved to the dead-letter queue (DLQ) for inspection.
+8. The worker deletes successfully processed messages. A dead-letter queue is not currently configured, so repeatedly failing messages require operational investigation.
 
 ## Technology stack
 
 | Area | Technologies | Purpose |
 |---|---|---|
-| API | Node.js 20, Express | HTTP API, routing, middleware |
+| API | Node.js 24, Express | HTTP API, routing, middleware |
 | Authentication | bcryptjs, jsonwebtoken | Password hashing and JWT authentication |
-| Database | PostgreSQL 15, `pg` | Users, products, orders, and order items |
-| Cache | Redis 7 | Product catalogue cache and session snapshot |
+| Database | PostgreSQL 15.17, `pg` | Users, products, orders, and order items |
+| Cache | Redis 6.0.16 | Product catalogue cache and session snapshot |
 | Messaging | Amazon SQS FIFO | Asynchronous order processing |
 | Email | Amazon SES | Order confirmation messages |
 | Object storage | Amazon S3, CloudFront | Product asset storage/delivery in the infrastructure design |
@@ -96,7 +93,7 @@ The application runs in Amazon EKS. The API and worker communicate with managed 
 | Configuration management | Ansible | Bastion, ops VM, and host configuration |
 | CI | GitHub Actions, Trivy | Automated tests, image builds, and vulnerability scans |
 | CD / GitOps | Argo CD | Deployments reconciled from Git |
-| Observability | Prometheus, Grafana, Alertmanager | Metrics, dashboards, and alerts |
+| Observability | Prometheus, Grafana, Alertmanager | Planned; not currently deployed |
 
 ## Repository layout
 
@@ -146,7 +143,7 @@ For local backend development:
 
 - Git
 - Docker Engine or Docker Desktop with the Docker Compose plugin
-- Node.js 20 and npm (useful for running a service outside Docker)
+- Node.js 24 and npm (useful for running a service outside Docker)
 
 For AWS integration and deployment, you will also need an AWS account and appropriately scoped credentials, plus the AWS CLI, Terraform (version `1.7.0` or later), Ansible, `kubectl`, and Helm.
 
@@ -340,11 +337,11 @@ The production design targets AWS region `ap-south-1` by default. The region is 
 | Component | Responsibility |
 |---|---|
 | VPC | Isolated network spanning public and private subnets across Availability Zones |
-| Application Load Balancer / ingress | Public entry point for HTTPS traffic into the cluster |
+| Network Load Balancer + ingress-nginx | Public entry point to the Kubernetes ingress controller |
 | Amazon EKS | Runs the API and worker containers |
 | Amazon RDS for PostgreSQL | Managed relational database in private subnets, with encrypted storage and automated backups |
 | Amazon ElastiCache for Redis | Managed cache in private subnets with encryption in transit and at rest |
-| Amazon SQS FIFO + DLQ | Ordered order processing and quarantine for repeatedly failing messages |
+| Amazon SQS FIFO | Asynchronous order processing; no dead-letter queue is currently configured |
 | Amazon SES | Transactional order confirmation email |
 | Amazon ECR | Private container image repositories and image scanning on push |
 | Amazon S3 + CloudFront | Private product-asset storage and delivery in the infrastructure design |
@@ -394,11 +391,10 @@ flowchart LR
     ARGO --> EKS[Rolling deployment on EKS]
 ```
 
-- GitHub Actions runs tests and security scans, then builds and pushes images to ECR on branch pushes.
+- GitHub Actions tests the API and worker, builds their images, and runs Trivy scans. On `main`, it publishes images to ECR using GitHub OIDC and opens a separate pull request to update Kubernetes image tags.
 - AWS authentication from GitHub Actions uses OIDC and a role assumption flow rather than long-lived AWS access keys.
 - Images are tagged with the Git commit SHA so a deployment can be traced to its source revision.
-- On `main`, the workflow updates the Kubernetes image tags in Git.
-- Argo CD reconciles the cluster with the manifests in the repository. Rollbacks are made by reverting the relevant Git change.
+- After the image-tag pull request is merged, Argo CD detects the updated manifests and reconciles the EKS cluster.
 
 Protect `main` with pull-request reviews and required status checks. Use the conventional commit format when practical, for example `feat(api): add product filtering` or `fix(worker): handle failed queue messages`.
 
@@ -413,8 +409,8 @@ Protect `main` with pull-request reviews and required status checks. Use the con
 - IRSA provides separate IAM roles to Kubernetes service accounts instead of sharing broad node credentials.
 - Container images use a non-root runtime user and multi-stage builds.
 - The CI workflow scans API and worker images for fixable high- and critical-severity vulnerabilities with Trivy.
-- Kubernetes network policies are designed around default-deny traffic with explicit service-to-service allowances.
-- SQS messages are retained for retry, with a DLQ configured after three receives in the example infrastructure.
+- VPC CNI network policy enforcement is enabled. The `shopwave` namespace has default-deny ingress and explicit API and worker network policies. Worker egress permits CoreDNS, PostgreSQL and Redis inside the VPC, and public non-private IPv4 HTTPS traffic; it is not restricted to AWS hostnames.
+- The SQS FIFO queue does not currently have a dead-letter queue configured. Failed messages rely on SQS visibility-timeout retry behavior.
 
 ## Frontend status
 
@@ -441,7 +437,7 @@ These details are worth understanding before treating the example as a productio
 
 ## Monitoring
 
-The deployment guide uses the `kube-prometheus-stack`, which includes Prometheus, Grafana, Alertmanager, node-exporter, and kube-state-metrics.
+**Current status:** Prometheus, Grafana, and Alertmanager are not currently deployed in the cluster. The alert definitions and PromQL below are reference material for a future monitoring rollout. The API `/metrics` endpoint is not implemented, so application-level Prometheus scraping is not currently available.
 
 The planned ShopWave alerts cover:
 
